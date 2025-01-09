@@ -1,7 +1,7 @@
 import torch
 import argparse
 import numpy as np
-from modules.tokenizers import Tokenizer
+# from modules.tokenizers import Tokenizer
 from modules.dataloaders import R2DataLoader
 from modules.metrics import compute_scores
 from modules.optimizers import build_optimizer, build_lr_scheduler
@@ -9,14 +9,15 @@ from modules.trainer import Trainer
 from modules.loss import compute_loss
 from models.ct2rep import CT2RepModel
 from modules.data_ct import CTReportDataset
+from transformers import AutoTokenizer
 
 def parse_agrs():
     parser = argparse.ArgumentParser()
 
     # Data loader settings
-    parser.add_argument('--max_seq_length', type=int, default=200, help='the maximum sequence length of the reports.')
-    parser.add_argument('--threshold', type=int, default=3, help='the cut off frequency for the words.')
-    parser.add_argument('--num_workers', type=int, default=2, help='the number of workers for dataloader.')
+    parser.add_argument('--max_seq_length', type=int, default=300, help='the maximum sequence length of the reports.')
+    parser.add_argument('--threshold', type=int, default=10, help='the cut off frequency for the words.')
+    parser.add_argument('--num_workers', type=int, default=16, help='the number of workers for dataloader.')
     parser.add_argument('--batch_size', type=int, default=2, help='the number of samples for a batch')
     parser.add_argument('--dataset_name', type=str, default='ct_dataset', help='dataset name.')
 
@@ -29,8 +30,8 @@ def parse_agrs():
     parser.add_argument('--num_layers', type=int, default=3, help='the number of layers of Transformer.')
     parser.add_argument('--dropout', type=float, default=0.1, help='the dropout rate of Transformer.')
     parser.add_argument('--logit_layers', type=int, default=1, help='the number of the logit layer.')
-    parser.add_argument('--bos_idx', type=int, default=0, help='the index of <bos>.')
-    parser.add_argument('--eos_idx', type=int, default=0, help='the index of <eos>.')
+    parser.add_argument('--bos_idx', type=int, default=101, help='the index of <bos>.')
+    parser.add_argument('--eos_idx', type=int, default=102, help='the index of <eos>.')
     parser.add_argument('--pad_idx', type=int, default=0, help='the index of <pad>.')
     parser.add_argument('--use_bn', type=int, default=0, help='whether to use batch normalization.')
     parser.add_argument('--drop_prob_lm', type=float, default=0.5, help='the dropout rate of the output layer.')
@@ -53,7 +54,7 @@ def parse_agrs():
     # Trainer settings
     parser.add_argument('--n_gpu', type=int, default=1, help='the number of gpus to be used.')
     parser.add_argument('--epochs', type=int, default=100, help='the number of training epochs.')
-    parser.add_argument('--save_dir', type=str, default='results/', help='the patch to save the models.')
+    parser.add_argument('--save_dir', type=str, default='results/ct2rep_baseline/', help='the patch to save the models.')
     parser.add_argument('--record_dir', type=str, default='records/', help='the patch to save the results of experiments')
     parser.add_argument('--save_period', type=int, default=1, help='the saving period.')
     parser.add_argument('--monitor_mode', type=str, default='max', choices=['min', 'max'], help='whether to max or min the metric.')
@@ -69,13 +70,14 @@ def parse_agrs():
 
     # Learning Rate Scheduler
     parser.add_argument('--lr_scheduler', type=str, default='StepLR', help='the type of the learning rate scheduler.')
-    parser.add_argument('--step_size', type=int, default=50, help='the step size of the learning rate scheduler.')
-    parser.add_argument('--gamma', type=float, default=0.1, help='the gamma of the learning rate scheduler.')
+    parser.add_argument('--step_size', type=int, default=1, help='the step size of the learning rate scheduler.')
+    parser.add_argument('--gamma', type=float, default=0.8, help='the gamma of the learning rate scheduler.')
 
     # Others
-    parser.add_argument('--xlsxfile', type=str, default="../example_data/CT2Rep/data_reports_example.xlsx", help='reports xlsx file.')
-    parser.add_argument('--trainfolder', type=str, default="../example_data/CT2Rep/train", help='train folder.')
-    parser.add_argument('--validfolder', type=str, default="../example_data/CT2Rep/valid", help='valid folder.')
+    parser.add_argument('--train_csv', type=str, default="/data/houbb/data/CT-RATE/dataset/radiology_text_reports/train_reports.csv", help='reports csv file.')
+    parser.add_argument('--valid_csv', type=str, default="/data/houbb/data/CT-RATE/dataset/radiology_text_reports/validation_reports.csv", help='reports csv file.')
+    parser.add_argument('--trainfolder', type=str, default="/data/houbb/data/CT-RATE/dataset/train_fixed", help='train folder.')
+    parser.add_argument('--validfolder', type=str, default="/data/houbb/data/CT-RATE/dataset/valid_fixed", help='valid folder.')
 
     parser.add_argument('--resume', type=str, help='whether to resume the training from existing checkpoints.')
 
@@ -89,10 +91,10 @@ def main():
     args = parse_agrs()
 
     # create tokenizer
-    tokenizer = Tokenizer(args)
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 
-    train_ds = CTReportDataset(args,data_folder=args.trainfolder, xlsx_file=args.xlsxfile, tokenizer=tokenizer, num_frames=2)
-    valid_ds  = CTReportDataset(args,data_folder=args.validfolder, xlsx_file=args.xlsxfile, tokenizer=tokenizer, num_frames=2)
+    train_ds = CTReportDataset(args,data_folder=args.trainfolder, csv_file=args.train_csv, tokenizer=tokenizer, num_frames=2)
+    valid_ds = CTReportDataset(args,data_folder=args.validfolder, csv_file=args.valid_csv, tokenizer=tokenizer, num_frames=2)
 
     # create data loader
     train_dataloader = R2DataLoader(args,train_ds, tokenizer, split='train', shuffle=True)

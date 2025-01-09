@@ -4,6 +4,7 @@ import json
 import torch
 import pandas as pd
 import numpy as np
+import SimpleITK as sitk
 from PIL import Image
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
@@ -23,59 +24,39 @@ def cast_num_frames(t, *, frames):
 
 
 class CTReportDataset(Dataset):
-    def __init__(self, args, data_folder, xlsx_file, tokenizer, min_slices=20, resize_dim=500, num_frames=2, force_num_frames=True):
-        self.data_folder = data_folder
+    def __init__(self, args, data_folder, csv_file, tokenizer, min_slices=20, resize_dim=500, num_frames=2, force_num_frames=True):
         self.min_slices = min_slices
         self.tokenizer = tokenizer
         self.max_seq_length = args.max_seq_length
-        self.accession_to_text = self.load_accession_text(xlsx_file)
-        self.paths=[]
-        self.samples = self.prepare_samples()
+
+        metadata_df = pd.read_csv(csv_file)
+        metadata_df = metadata_df.drop_duplicates(subset='Findings_EN')
+        metadata_df = metadata_df.dropna(subset='Findings_EN')
+
+        def make_filepath(VolumeName):
+            dir1 = VolumeName.rsplit('_', 1)[0]
+            dir2 = VolumeName.rsplit('_', 2)[0]
+            return os.path.join(data_folder, dir2, dir1, VolumeName)
+        metadata_df['filepaths'] = metadata_df['VolumeName'].apply(make_filepath)
+
+        metadata_df['input_ids'] = metadata_df['Findings_EN'].apply(
+            lambda x: tokenizer(x, max_length=self.max_seq_length)['input_ids'])
+
+        self.metadata_df = metadata_df
 
         self.transform = transforms.Compose([
             transforms.Resize((resize_dim,resize_dim)),
             transforms.ToTensor()
         ])
         self.nii_to_tensor = partial(self.nii_img_to_tensor, transform = self.transform)
-        self.cast_num_frames_fn = partial(cast_num_frames, frames = num_frames) if force_num_frames else identity
-
-    def load_accession_text(self, xlsx_file):
-        df = pd.read_excel(xlsx_file)
-        accession_to_text = {}
-        for index, row in df.iterrows():
-            accession_to_text[row['AccessionNo']] = row["Findings_EN"]
-        return accession_to_text
-
-
-    def prepare_samples(self):
-        samples = []
-        for patient_folder in tqdm.tqdm(glob.glob(os.path.join(self.data_folder, '*'))):
-            for accession_folder in glob.glob(os.path.join(patient_folder, '*')):
-                accession_number = os.path.basename(accession_folder)
-                if accession_number not in self.accession_to_text:
-                    continue
-
-                impression_text = self.accession_to_text[accession_number]
-
-                for nii_file in glob.glob(os.path.join(accession_folder, '*.npz')):
-                    # Construct the input text with the included metadata
-                    if impression_text == "Not given.":
-                        impression_text=""
-
-                    input_text_concat = str(impression_text)
-
-                    input_text = f'{input_text_concat}'
-                    samples.append((nii_file, input_text_concat))
-                    self.paths.append(nii_file)
-
-        return samples
+        # self.cast_num_frames_fn = partial(cast_num_frames, frames = num_frames) if force_num_frames else identity
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.metadata_df)
 
     def nii_img_to_tensor(self, path, transform):
-        img_data = np.load(path)["arr_0"]
-    
+        img_data = sitk.ReadImage(path)
+        img_data = sitk.GetArrayFromImage(img_data)
         img_data= np.transpose(img_data, (1, 2, 0))
         img_data = img_data*1000
         hu_min, hu_max = -1000, 200
@@ -122,11 +103,32 @@ class CTReportDataset(Dataset):
 
     
     def __getitem__(self, index):
-        img, text = self.samples[index]
-        img_id = img.split("/")[-1]
-        tensor = self.nii_to_tensor(img)
-        ids = self.tokenizer(text)[:self.max_seq_length]
+        row = self.metadata_df.iloc[index]
+        img_id = row['VolumeName']
+        tensor = self.nii_to_tensor(row['filepaths'])
+        ids = row['input_ids']
         mask = [1] * len(ids)
-        seq_lenght = len(ids)
-        sample = (img_id, tensor, ids, mask, seq_lenght)
+        seq_length = len(ids)
+        sample = (img_id, tensor, ids, mask, seq_length)
         return sample
+
+
+
+if __name__ == '__main__':
+
+    a=1
+
+    from transformers import AutoTokenizer
+
+    dataset = CTReportDataset(
+        args=None,
+        data_folder='/data/houbb/data/CT-RATE/dataset/valid_fixed',
+        csv_file='/data/houbb/data/CT-RATE/dataset/radiology_text_reports/validation_reports.csv',
+        tokenizer=AutoTokenizer.from_pretrained('bert-base-uncased'),
+    )
+
+    a=1
+
+    sample = dataset[42]
+
+    a=1

@@ -7,6 +7,7 @@ import pandas as pd
 from numpy import inf
 import csv
 
+from tqdm import tqdm
 
 class BaseTrainer(object):
     def __init__(self, model, criterion, metric_ftns, optimizer, args):
@@ -51,8 +52,9 @@ class BaseTrainer(object):
 
     def train(self):
         not_improved_count = 0
-        for epoch in range(self.start_epoch, self.epochs + 1):
+        for epoch in tqdm(range(self.start_epoch, self.epochs + 1)):
             result = self._train_epoch(epoch)
+            self._save_checkpoint(epoch)  # redundant? forcing save every epoch to be safe
 
             # save logged informations into log dict
             log = {'epoch': epoch}
@@ -133,11 +135,13 @@ class BaseTrainer(object):
         print("Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch))
 
     def _record_best(self, log):
-        improved_val = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.best_recorder['val'][
-            self.mnt_metric]) or \
-                       (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.best_recorder['val'][self.mnt_metric])
-        if improved_val:
-            self.best_recorder['val'].update(log)
+        try:
+            improved_val = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.best_recorder['val'][self.mnt_metric]) or \
+                           (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.best_recorder['val'][self.mnt_metric])
+            if improved_val:
+                self.best_recorder['val'].update(log)
+        except KeyError:
+            print("Warning: Metric '{}' is not found. " "Model performance monitoring is disabled.".format(self.mnt_metric))
 
     def _print_best(self):
         print('Best results (w.r.t {}) in validation set:'.format(self.args.monitor_metric))
@@ -162,7 +166,8 @@ class Trainer(BaseTrainer):
 
         train_loss = 0
         self.model.train()
-        for batch_idx, (images_id, images, reports_ids, reports_masks) in enumerate(self.train_dataloader):
+        for batch_idx, (images_id, images, reports_ids, reports_masks) in tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader)):
+            # if batch_idx == 4: break
             images, reports_ids, reports_masks = images.to(self.device), reports_ids.to(self.device), reports_masks.to(
                 self.device)
             output = self.model(images, reports_ids, mode='train')
@@ -177,29 +182,30 @@ class Trainer(BaseTrainer):
         print("begin eval")
         dir_save = self.args.save_dir
         print(epoch)
-        if(epoch%1==0):
+        if(epoch%5==0):
             self.model.eval()
             with torch.no_grad():
-               val_gts, val_res = [], []
-               gts=f"{dir_save}/"+str(epoch)+"gts.csv"
-               res=f"{dir_save}/"+str(epoch)+"res.csv"
+                val_gts, val_res = [], []
+                gts=f"{dir_save}/"+str(epoch)+"gts.csv"
+                res=f"{dir_save}/"+str(epoch)+"res.csv"
 
 
-               with open(gts,"w",newline="") as gtss:
-                with open(res,"w",newline="") as ress:
-                   for batch_idx, (images_id, images, reports_ids, reports_masks) in enumerate(self.test_dataloader):
-                        images, reports_ids, reports_masks = images.to(self.device), reports_ids.to(
-                            self.device), reports_masks.to(self.device)
-                        output = self.model(images, mode='sample')
-                        reports = self.model.tokenizer.decode_batch(output.cpu().numpy())
-                        ground_truths = self.model.tokenizer.decode_batch(reports_ids[:, 1:].cpu().numpy())
-                        val_res.extend(reports)
-                        val_gts.extend(ground_truths)
-                        gt_writer=csv.writer(gtss)
-                        gen_writer=csv.writer(ress)
-                        for x in range(len(reports)):
-                          gt_writer.writerow([str(ground_truths[x])])
-                          gen_writer.writerow([str(reports[x])])
+                with open(gts,"w",newline="") as gtss:
+                    with open(res,"w",newline="") as ress:
+                        for batch_idx, (images_id, images, reports_ids, reports_masks) in tqdm(enumerate(self.test_dataloader), total=len(self.test_dataloader)):
+                            # if batch_idx == 4: break
+                            images, reports_ids, reports_masks = images.to(self.device), reports_ids.to(
+                                self.device), reports_masks.to(self.device)
+                            output = self.model(images, mode='sample')
+                            reports = self.model.tokenizer.batch_decode(output.cpu().numpy())
+                            ground_truths = self.model.tokenizer.batch_decode(reports_ids[:, 1:].cpu().numpy())
+                            val_res.extend(reports)
+                            val_gts.extend(ground_truths)
+                            gt_writer=csv.writer(gtss)
+                            gen_writer=csv.writer(ress)
+                            for x in range(len(reports)):
+                                gt_writer.writerow([str(ground_truths[x])])
+                                gen_writer.writerow([str(reports[x])])
                 gtss.close()
                 ress.close()
                 val_met = self.metric_ftns({i: [gt] for i, gt in enumerate(val_gts)},
