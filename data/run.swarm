@@ -1,0 +1,24 @@
+#! /bin/bash
+
+#SWARM --threads-per-process 4
+#SWARM --gb-per-process 64
+#SWARM --logdir /data/houbb/.logs/biowulf/makefeatures-ct-rate
+#SWARM --time 10-00:00:00
+#SWARM --partition gpu
+#SWARM --gres=gpu:a100:1
+
+source /data/houbb/_venv/python39/bin/activate
+
+python encode_volumes.py --part_num 1 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 2 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 3 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 4 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 5 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 6 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 7 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 8 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 9 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 10 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 11 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 12 --total_parts 12 --metadata_csv 'radiology_text_reports/train_reports.csv' --split 'train' --save_folder './vit_g_patch16/features_train'
+python encode_volumes.py --part_num 1 --total_parts 1 --metadata_csv 'radiology_text_reports/validation_reports.csv' --split 'valid' --save_folder './vit_g_patch16/features_valid'
